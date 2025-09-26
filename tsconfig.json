@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",              // Vilken JS-version TypeScript ska kompileras till
+    "module": "commonjs",            // Modulsystem (vanligt för Node.js)
+    "outDir": "./dist",              // Var kompilerad JS kod hamnar
+    "rootDir": "./src",              // Var din TS-kod ligger
+    "strict": true,                  // Strikta typkontroller
+    "esModuleInterop": true,         // För att kunna importera CommonJS moduler utan problem
+    "skipLibCheck": true             // Hoppa över typkontroll på bibliotek, snabbar upp kompilering
+  }
+}
