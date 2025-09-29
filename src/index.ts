@@ -36,7 +36,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-/* ----------------------- PRODUKTER ----------------------- */
+/* ----------------------- PRODUCTS ----------------------- */
 
 // GET all products
 app.get("/products", async (req, res) => {
@@ -139,68 +139,73 @@ app.delete("/products/:id", async (req, res) => {
 });
 
 /* ----------------------- AUTH MIDDLEWARE ----------------------- */
-export function authenticateToken(req: any, res: any, next: any) {
+function authenticateToken(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
+
   if (!token) return res.status(401).json({ message: "No token provided" });
 
   jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
-    req.user = user; // id, email, name from token
+    if (err) {
+      console.error("JWT error:", err);
+      return res.status(403).json({ message: "Invalid token" });
+    }
+    req.user = user;
     next();
   });
 }
 
 /* ----------------------- CREATE ORDER ----------------------- */
 
-app.post("/orders", authenticateToken, async (req: any, res: any) => {
-  const userId = req.user.id;
-  const { items } = req.body;
+app.post("/orders", async (req: any, res: any) => {
+  const authHeader = req.headers["authorization"];
+  let userId = null;
 
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const user = jwt.verify(token, JWT_SECRET) as any;
+      userId = user.id; // logged in user
+    } catch (err) {
+      console.warn("Invalid token, proceeding as guest");
+    }
+  }
+
+  const { items } = req.body;
   if (!items || items.length === 0) {
     return res.status(400).json({ message: "Cart is empty" });
   }
 
   const total = items.reduce(
-    (sum: number, item: Product) => sum + item.price * (item.quantity || 1),
+    (sum: number, item: any) => sum + item.price * (item.quantity || 1),
     0
   );
 
   try {
-    // Insert into orders table
     const [orderResult] = await pool.query(
       "INSERT INTO orders (user_id, total) VALUES (?, ?)",
       [userId, total]
     );
     const orderId = (orderResult as any).insertId;
 
-    // Insert items into order_items table
     for (const item of items) {
       await pool.query(
         "INSERT INTO order_items (order_id, name, price, quantity) VALUES (?, ?, ?, ?)",
-        [orderId, item.quantity, item.name, item.price || 1]
+        [orderId, item.name, item.price, item.quantity || 1]
       );
     }
 
     res.status(201).json({
       message: "Order placed",
-      order: {
-        id: orderId,
-        items,
-        total,
-      },
+      order: { id: orderId, items, total },
     });
-  } catch (err: any) {
-    console.error("Order error:", err.message);
-    if (err.code) console.error("MySQL error code:", err.code);
-    if (err.sqlMessage) console.error("MySQL message:", err.sqlMessage);
-    if (err.sql) console.error("Failed SQL:", err.sql);
-
-    res.status(500).json({ message: "Server error", error: err.sqlMessage });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// logged-in user's orders
+// logged in user's orders
 app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
   const userId = req.user.id;
 
@@ -209,11 +214,10 @@ app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
       "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC",
       [userId]
     );
-
-    const ordersArray = Array.isArray(orders) ? orders : [];
+    
     // Fetch items for each order
     const ordersWithItems = await Promise.all(
-      ordersArray.map(async (order: any) => {
+      (orders as any[]).map(async (order) => {
         const [items] = await pool.query(
           "SELECT name, price, quantity FROM order_items WHERE order_id = ?",
           [order.id]
