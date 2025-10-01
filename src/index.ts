@@ -214,7 +214,7 @@ app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
       "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC",
       [userId]
     );
-    
+
     // Fetch items for each order
     const ordersWithItems = await Promise.all(
       (orders as any[]).map(async (order) => {
@@ -267,9 +267,6 @@ app.get("/admin/orders", async (req, res) => {
 app.post("/register", async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
-  if (!name || !email || !password)
-    return res.status(400).json({ message: "All fields are required" });
-
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -278,7 +275,7 @@ app.post("/register", async (req: Request, res: Response) => {
       [name, email, hashedPassword]
     );
 
-    res.status(201).json({ message: "User registered successfully" });
+    res.status(201).json({ message: "User registered successfully, you can now log in" });
   } catch (err: any) {
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(400).json({ message: "Email already exists" });
@@ -292,22 +289,22 @@ app.post("/register", async (req: Request, res: Response) => {
 app.post("/login", async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  if (!email || !password)
-    return res.status(400).json({ message: "Email and password required" });
-
   try {
     const [rows] = (await pool.query("SELECT * FROM users WHERE email = ?", [
       email,
     ])) as [any[], any];
 
-    if (rows.length === 0)
+    if (rows.length === 0) {
+      // Endast detta felmeddelande returneras
       return res.status(400).json({ message: "Invalid email or password" });
+    }
 
     const user = rows[0];
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match)
+    if (!match) {
       return res.status(400).json({ message: "Invalid email or password" });
+    }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
@@ -322,7 +319,7 @@ app.post("/login", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(400).json({ message: "Invalid email or password" });
   }
 });
 
