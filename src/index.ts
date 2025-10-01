@@ -5,9 +5,12 @@ import path from "path";
 import { pool } from "./db";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
 const port = 4000;
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 interface Product {
   id: string;
@@ -21,8 +24,6 @@ interface Product {
 
 app.use(cors());
 app.use(express.json());
-
-const JWT_SECRET = "supersecret"; // for demo only, store in env for real apps
 
 // Access files with /uploads via http://localhost:4000/uploads/filename.jpg
 app.use("/uploads", express.static("uploads"));
