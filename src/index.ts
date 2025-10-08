@@ -296,7 +296,6 @@ app.post("/login", async (req: Request, res: Response) => {
     ])) as [any[], any];
 
     if (rows.length === 0) {
-      // Endast detta felmeddelande returneras
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
@@ -320,7 +319,8 @@ app.post("/login", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ message: "Invalid email or password" });
+    const errorMessage = typeof err === "object" && err !== null && "message" in err ? (err as { message: string }).message : String(err);
+    res.status(500).json({ message: "Server error", error: errorMessage });
   }
 });
 
