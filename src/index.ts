@@ -42,8 +42,8 @@ const upload = multer({ storage });
 // GET all products
 app.get("/products", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM products");
-    res.json(rows);
+    const result = await pool.query("SELECT * FROM products");
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -53,12 +53,11 @@ app.get("/products", async (req, res) => {
 // GET product with ID
 app.get("/products/:id", async (req, res) => {
   try {
-    const [rows] = (await pool.query("SELECT * FROM products WHERE id = ?", [
-      req.params.id,
-    ])) as [any[], any];
-    if (rows.length === 0)
+    const result = await pool.query("SELECT * FROM products WHERE id = $1", 
+      [req.params.id,]); 
+    if (result.rows.length === 0)
       return res.status(404).json({ message: "Product not found" });
-    res.json(rows[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -71,7 +70,7 @@ app.post("/products", upload.single("image"), async (req, res) => {
   const image = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
-    const [result] = await pool.query(
+    const result = await pool.query(
       "INSERT INTO products (name, price, category, description, size, hairType, image) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [name, price, category, description, size, hairType, image]
     );
@@ -98,25 +97,16 @@ app.put("/products/:id", upload.single("image"), async (req, res) => {
   const image = req.file ? `/uploads/${req.file.filename}` : req.body.image;
 
   try {
-    const [result] = await pool.query(
-      "UPDATE products SET name=?, price=?, category=?, description=?, size=?, hairType=?, image=? WHERE id=?",
+    const result = await pool.query(
+      "UPDATE products SET name=$1, price=$2, category=$3, description=$4, size=$5, hairType=$6, image=$7 WHERE id=$8 RETURNING *",
       [name, price, category, description, size, hairType, image, req.params.id]
     );
 
-    if ((result as any).affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    res.json({
-      id: req.params.id,
-      name,
-      price,
-      category,
-      description,
-      size,
-      hairType,
-      image,
-    });
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -126,10 +116,10 @@ app.put("/products/:id", upload.single("image"), async (req, res) => {
 // DELETE product
 app.delete("/products/:id", async (req, res) => {
   try {
-    const [result] = await pool.query("DELETE FROM products WHERE id = ?", [
+    const result = await pool.query("DELETE FROM products WHERE id = $1", [
       req.params.id,
     ]);
-    if ((result as any).affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: "Product not found" });
     }
     res.status(204).send();
@@ -183,7 +173,7 @@ app.post("/orders", async (req: any, res: any) => {
   );
 
   try {
-    const [orderResult] = await pool.query(
+    const orderResult = await pool.query(
       "INSERT INTO orders (user_id, total) VALUES (?, ?)",
       [userId, total]
     );
@@ -211,21 +201,22 @@ app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
   const userId = req.user.id;
 
   try {
-    const [orders] = await pool.query(
+    const ordersResult = await pool.query(
       "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC",
       [userId]
     );
+    const orders = ordersResult.rows;
 
     // Fetch items for each order
     const ordersWithItems = await Promise.all(
-      (orders as any[]).map(async (order) => {
-        const [items] = await pool.query(
+      orders.map(async (order) => {
+        const itemsResult = await pool.query(
           "SELECT name, price, quantity FROM order_items WHERE order_id = ?",
           [order.id]
         );
         return {
           ...order,
-          items,
+          items: itemsResult.rows,
           date: order.created_at.toISOString().split("T")[0], // only date
         };
       })
@@ -243,18 +234,19 @@ app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
 // GET all orders with their items
 app.get("/admin/orders", async (req, res) => {
   try {
-    const [orders] = await pool.query(
+    const ordersResult = await pool.query(
       "SELECT * FROM orders ORDER BY created_at DESC"
     );
+    const orders = ordersResult.rows;
 
     // Fetch items for each order
     const ordersWithItems = [];
-    for (const order of orders as any[]) {
-      const [items] = await pool.query(
+    for (const order of orders) {
+      const itemsResult = await pool.query(
         "SELECT * FROM order_items WHERE order_id = ?",
         [order.id]
       );
-      ordersWithItems.push({ ...order, items });
+      ordersWithItems.push({ ...order, items: itemsResult.rows });
     }
 
     res.json(ordersWithItems);
@@ -291,9 +283,10 @@ app.post("/login", async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
-    const [rows] = (await pool.query("SELECT * FROM users WHERE email = ?", [
+    const result = await pool.query("SELECT * FROM users WHERE email = ?", [
       email,
-    ])) as [any[], any];
+    ]);
+    const rows = result.rows;
 
     if (rows.length === 0) {
       return res.status(400).json({ message: "Invalid email or password" });
