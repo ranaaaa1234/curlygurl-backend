@@ -45,8 +45,9 @@ app.get("/products", async (req, res) => {
     const result = await pool.query("SELECT * FROM products");
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    console.error("error fetching products:", err);
+    const errorMessage = typeof err === "object" && err !== null && "message" in err ? (err as { message: string }).message : String(err);
+    res.status(500).json({ error: "Server error", details: errorMessage });
   }
 });
 
