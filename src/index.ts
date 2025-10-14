@@ -319,6 +319,7 @@ app.post("/login", async (req: Request, res: Response) => {
 });
 
 /* ----------------------- START SERVER ----------------------- */
-app.listen(port, () => {
+const PORT = (process.env.PORT || 10000);
+app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
