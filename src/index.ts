@@ -77,7 +77,7 @@ app.post("/products", upload.single("image"), async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO products 
-      (name, price, category, description, size, hairType, image) 
+      (name, price, description, size, image) 
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *`,
       [name, price, description, size, image]
@@ -92,15 +92,15 @@ app.post("/products", upload.single("image"), async (req, res) => {
 
 // PUT update product
 app.put("/products/:id", upload.single("image"), async (req, res) => {
-  const { name, price, category, description, size, hairType } = req.body;
+  const { name, price, description, size } = req.body;
   const image = req.file ? `/uploads/${req.file.filename}` : req.body.image;
 
   try {
     const result = await pool.query(
       `UPDATE products SET 
-      name=$1, price=$2, category=$3, description=$4, size=$5, hairType=$6, image=$7
+      name=$1, price=$2, description=$3, size=$4, image=$5
       WHERE id=$8 RETURNING *`,
-      [name, price, category, description, size, hairType, image, req.params.id]
+      [name, price, description, size, image, req.params.id]
     );
 
     if (result.rowCount === 0)
@@ -129,6 +129,67 @@ app.delete("/products/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+/* ----------------------- FAVOURITES ----------------------- */
+
+// POST add to favorites
+app.post("/favorites/:productId", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+  const productId = req.params.productId;
+
+  try {
+    await pool.query(
+      `INSERT INTO favorites (user_id, product_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, product_id) DO NOTHING`,
+      [userId, productId]
+    );
+
+    res.json({ message: "Added to favorites" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// DELETE remove from favorites
+app.delete("/favorites/:productId", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+  const productId = req.params.productId;
+
+  try {
+    await pool.query(
+      `DELETE FROM favorites WHERE user_id = $1 AND product_id = $2`,
+      [userId, productId]
+    );
+
+    res.json({ message: "Removed from favorites" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// GET user's favorite products
+app.get("/favorites", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+
+  try {
+    const result = await pool.query(
+      `SELECT p.* 
+       FROM products p
+       JOIN favorites f ON p.id = f.product_id
+       WHERE f.user_id = $1`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 /* ----------------------- ORDERS ----------------------- */
 
