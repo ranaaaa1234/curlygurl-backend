@@ -205,30 +205,6 @@ app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-// GET all orders (admin)
-app.get("/admin/orders", async (req, res) => {
-  try {
-    const ordersResult = await pool.query(
-      "SELECT * FROM orders ORDER BY created_at DESC"
-    );
-    const orders = ordersResult.rows;
-
-    const ordersWithItems = [];
-    for (const order of orders) {
-      const itemsResult = await pool.query(
-        "SELECT * FROM order_items WHERE order_id = $1",
-        [order.id]
-      );
-      ordersWithItems.push({ ...order, items: itemsResult.rows });
-    }
-
-    res.json(ordersWithItems);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 /* ----------------------- AUTH MIDDLEWARE ----------------------- */
 
 function authenticateToken(req: any, res: any, next: any) {
