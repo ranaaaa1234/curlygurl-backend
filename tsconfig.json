@@ -8,6 +8,9 @@
     "esModuleInterop": true,         // För att kunna importera CommonJS moduler utan problem
     "skipLibCheck": true             // Hoppa över typkontroll på bibliotek, snabbar upp kompilering
   },
+  "include": [
+    "src/**/*"
+  ],
   "exclude": [
     "test-db.ts"
   ]

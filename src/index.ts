@@ -46,7 +46,10 @@ app.get("/products", async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error("error fetching products:", err);
-    const errorMessage = typeof err === "object" && err !== null && "message" in err ? (err as { message: string }).message : String(err);
+    const errorMessage =
+      typeof err === "object" && err !== null && "message" in err
+        ? (err as { message: string }).message
+        : String(err);
     res.status(500).json({ error: "Server error", details: errorMessage });
   }
 });
@@ -54,8 +57,9 @@ app.get("/products", async (req, res) => {
 // GET product with ID
 app.get("/products/:id", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM products WHERE id = $1", 
-      [req.params.id,]); 
+    const result = await pool.query("SELECT * FROM products WHERE id = $1", [
+      req.params.id,
+    ]);
     if (result.rows.length === 0)
       return res.status(404).json({ message: "Product not found" });
     res.json(result.rows[0]);
@@ -65,27 +69,21 @@ app.get("/products/:id", async (req, res) => {
   }
 });
 
-// POST create new product (with img)
+// POST create new product
 app.post("/products", upload.single("image"), async (req, res) => {
-  const { name, price, category, description, size, hairType } = req.body;
+  const { name, price, description, size } = req.body;
   const image = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
     const result = await pool.query(
-      "INSERT INTO products (name, price, category, description, size, hairType, image) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [name, price, category, description, size, hairType, image]
+      `INSERT INTO products 
+      (name, price, category, description, size, hairType, image) 
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *`,
+      [name, price, description, size, image]
     );
 
-    res.status(201).json({
-      id: (result as any).insertId,
-      name,
-      price,
-      category,
-      description,
-      size,
-      hairType,
-      image,
-    });
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -99,13 +97,14 @@ app.put("/products/:id", upload.single("image"), async (req, res) => {
 
   try {
     const result = await pool.query(
-      "UPDATE products SET name=$1, price=$2, category=$3, description=$4, size=$5, hairType=$6, image=$7 WHERE id=$8 RETURNING *",
+      `UPDATE products SET 
+      name=$1, price=$2, category=$3, description=$4, size=$5, hairType=$6, image=$7
+      WHERE id=$8 RETURNING *`,
       [name, price, category, description, size, hairType, image, req.params.id]
     );
 
-    if (result.rowCount === 0) {
+    if (result.rowCount === 0)
       return res.status(404).json({ message: "Product not found" });
-    }
 
     res.json(result.rows[0]);
   } catch (err) {
@@ -120,9 +119,10 @@ app.delete("/products/:id", async (req, res) => {
     const result = await pool.query("DELETE FROM products WHERE id = $1", [
       req.params.id,
     ]);
-    if (result.rowCount === 0) {
+
+    if (result.rowCount === 0)
       return res.status(404).json({ message: "Product not found" });
-    }
+
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -130,7 +130,107 @@ app.delete("/products/:id", async (req, res) => {
   }
 });
 
+/* ----------------------- ORDERS ----------------------- */
+
+// POST create order
+app.post("/orders", async (req: any, res: any) => {
+  const authHeader = req.headers["authorization"];
+  let userId = null;
+
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const user = jwt.verify(token, JWT_SECRET) as any;
+      userId = user.id;
+    } catch (err) {
+      console.warn("Invalid token, proceeding as guest");
+    }
+  }
+
+  const { items } = req.body;
+  if (!items || items.length === 0)
+    return res.status(400).json({ message: "Cart is empty" });
+
+  const total = items.reduce(
+    (sum: number, item: any) => sum + item.price * (item.quantity || 1),
+    0
+  );
+
+  try {
+    const orderResult = await pool.query(
+      "INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING id",
+      [userId, total]
+    );
+    const orderId = orderResult.rows[0].id;
+
+    for (const item of items) {
+      await pool.query(
+        "INSERT INTO order_items (order_id, name, price, quantity) VALUES ($1, $2, $3, $4)",
+        [orderId, item.name, item.price, item.quantity || 1]
+      );
+    }
+
+    res.status(201).json({ message: "Order placed", order: { id: orderId, items, total } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// GET logged-in user's orders
+app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+
+  try {
+    const ordersResult = await pool.query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+    const orders = ordersResult.rows;
+
+    const ordersWithItems = await Promise.all(
+      orders.map(async (order) => {
+        const itemsResult = await pool.query(
+          "SELECT name, price, quantity FROM order_items WHERE order_id = $1",
+          [order.id]
+        );
+        return { ...order, items: itemsResult.rows, date: order.created_at.toISOString().split("T")[0] };
+      })
+    );
+
+    res.json(ordersWithItems);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// GET all orders (admin)
+app.get("/admin/orders", async (req, res) => {
+  try {
+    const ordersResult = await pool.query(
+      "SELECT * FROM orders ORDER BY created_at DESC"
+    );
+    const orders = ordersResult.rows;
+
+    const ordersWithItems = [];
+    for (const order of orders) {
+      const itemsResult = await pool.query(
+        "SELECT * FROM order_items WHERE order_id = $1",
+        [order.id]
+      );
+      ordersWithItems.push({ ...order, items: itemsResult.rows });
+    }
+
+    res.json(ordersWithItems);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 /* ----------------------- AUTH MIDDLEWARE ----------------------- */
+
 function authenticateToken(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -147,117 +247,9 @@ function authenticateToken(req: any, res: any, next: any) {
   });
 }
 
-/* ----------------------- CREATE ORDER ----------------------- */
+/* ----------------------- AUTH ----------------------- */
 
-app.post("/orders", async (req: any, res: any) => {
-  const authHeader = req.headers["authorization"];
-  let userId = null;
-
-  if (authHeader) {
-    const token = authHeader.split(" ")[1];
-    try {
-      const user = jwt.verify(token, JWT_SECRET) as any;
-      userId = user.id; // logged in user
-    } catch (err) {
-      console.warn("Invalid token, proceeding as guest");
-    }
-  }
-
-  const { items } = req.body;
-  if (!items || items.length === 0) {
-    return res.status(400).json({ message: "Cart is empty" });
-  }
-
-  const total = items.reduce(
-    (sum: number, item: any) => sum + item.price * (item.quantity || 1),
-    0
-  );
-
-  try {
-    const orderResult = await pool.query(
-      "INSERT INTO orders (user_id, total) VALUES (?, ?)",
-      [userId, total]
-    );
-    const orderId = (orderResult as any).insertId;
-
-    for (const item of items) {
-      await pool.query(
-        "INSERT INTO order_items (order_id, name, price, quantity) VALUES (?, ?, ?, ?)",
-        [orderId, item.name, item.price, item.quantity || 1]
-      );
-    }
-
-    res.status(201).json({
-      message: "Order placed",
-      order: { id: orderId, items, total },
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// logged in user's orders
-app.get("/user-orders", authenticateToken, async (req: any, res: any) => {
-  const userId = req.user.id;
-
-  try {
-    const ordersResult = await pool.query(
-      "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC",
-      [userId]
-    );
-    const orders = ordersResult.rows;
-
-    // Fetch items for each order
-    const ordersWithItems = await Promise.all(
-      orders.map(async (order) => {
-        const itemsResult = await pool.query(
-          "SELECT name, price, quantity FROM order_items WHERE order_id = ?",
-          [order.id]
-        );
-        return {
-          ...order,
-          items: itemsResult.rows,
-          date: order.created_at.toISOString().split("T")[0], // only date
-        };
-      })
-    );
-
-    res.json(ordersWithItems);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* ----------------------- ADMIN ----------------------- */
-
-// GET all orders with their items
-app.get("/admin/orders", async (req, res) => {
-  try {
-    const ordersResult = await pool.query(
-      "SELECT * FROM orders ORDER BY created_at DESC"
-    );
-    const orders = ordersResult.rows;
-
-    // Fetch items for each order
-    const ordersWithItems = [];
-    for (const order of orders) {
-      const itemsResult = await pool.query(
-        "SELECT * FROM order_items WHERE order_id = ?",
-        [order.id]
-      );
-      ordersWithItems.push({ ...order, items: itemsResult.rows });
-    }
-
-    res.json(ordersWithItems);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// ----------------- REGISTER -----------------
+// REGISTER
 app.post("/register", async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
@@ -265,40 +257,36 @@ app.post("/register", async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await pool.query(
-      "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+      "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *",
       [name, email, hashedPassword]
     );
 
     res.status(201).json({ message: "User registered successfully, you can now log in" });
   } catch (err: any) {
-    if (err.code === "ER_DUP_ENTRY") {
+    if (err.code === "23505") { // unique violation
       return res.status(400).json({ message: "Email already exists" });
     }
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message } );
   }
 });
 
-// ----------------- LOGIN -----------------
+// LOGIN
 app.post("/login", async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email = ?", [
-      email,
-    ]);
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     const rows = result.rows;
 
-    if (rows.length === 0) {
+    if (rows.length === 0)
       return res.status(400).json({ message: "Invalid email or password" });
-    }
 
     const user = rows[0];
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match) {
+    if (!match)
       return res.status(400).json({ message: "Invalid email or password" });
-    }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
@@ -306,20 +294,22 @@ app.post("/login", async (req: Request, res: Response) => {
       { expiresIn: "1h" }
     );
 
-    res.json({
-      message: "Login successful",
-      token,
-      user: { id: user.id, name: user.name, email: user.email },
-    });
+    res.json({ message: "Login successful", token, user: { id: user.id, name: user.name, email: user.email } });
   } catch (err) {
     console.error(err);
-    const errorMessage = typeof err === "object" && err !== null && "message" in err ? (err as { message: string }).message : String(err);
+    const errorMessage =
+      typeof err === "object" && err !== null && "message" in err
+        ? (err as { message: string }).message
+        : String(err);
     res.status(500).json({ message: "Server error", error: errorMessage });
   }
 });
 
 /* ----------------------- START SERVER ----------------------- */
-const PORT = (process.env.PORT || 10000);
-app.listen(PORT, () => {
+app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
+});
+
+app.get("/", (req, res) => {
+  res.send("Backend is alive :)");
 });
