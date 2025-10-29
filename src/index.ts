@@ -133,40 +133,40 @@ app.delete("/products/:id", async (req, res) => {
 /* ----------------------- FAVOURITES ----------------------- */
 
 // POST add to favorites
-app.post("/favorites/:productId", authenticateToken, async (req: any, res: any) => {
-  const userId = req.user.id;
-  const productId = req.params.productId;
+app.post("/favorites", upload.single("image"), async (req, res) => {
+  const { name, price, description, size } = req.body;
+  const image = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
-    await pool.query(
-      `INSERT INTO favorites (user_id, product_id)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id, product_id) DO NOTHING`,
-      [userId, productId]
+    const result = await pool.query(
+      `INSERT INTO favorites 
+      (name, price, description, size, image) 
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *`,
+      [name, price, description, size, image]
     );
 
-    res.json({ message: "Added to favorites" });
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// DELETE remove from favorites
-app.delete("/favorites/:productId", authenticateToken, async (req: any, res: any) => {
-  const userId = req.user.id;
-  const productId = req.params.productId;
-
+// DELETE from favorites
+app.delete("/favorites/:id", async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM favorites WHERE user_id = $1 AND product_id = $2`,
-      [userId, productId]
-    );
+    const result = await pool.query("DELETE FROM products WHERE id = $1", [
+      req.params.id,
+    ]);
 
-    res.json({ message: "Removed from favorites" });
+    if (result.rowCount === 0)
+      return res.status(404).json({ message: "Product not found" });
+
+    res.status(204).send();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
