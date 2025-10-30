@@ -133,40 +133,36 @@ app.delete("/products/:id", async (req, res) => {
 /* ----------------------- FAVOURITES ----------------------- */
 
 // POST add to favorites
-app.post("/favorites", upload.single("image"), async (req, res) => {
-  const { name, price, description, size } = req.body;
-  const image = req.file ? `/uploads/${req.file.filename}` : null;
+app.post("/favorites", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+  const { productId } = req.body;
 
   try {
-    const result = await pool.query(
-      `INSERT INTO favorites 
-      (name, price, description, size, image) 
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *`,
-      [name, price, description, size, image]
+    await pool.query(
+      "INSERT INTO favorites (user_id, product_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+      [userId, productId]
     );
-
-    res.status(201).json(result.rows[0]);
+    res.json({ message: "Product added to favorites" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // DELETE from favorites
-app.delete("/favorites/:id", async (req, res) => {
+app.delete("/favorites/:id", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+  const productId = req.params.id;
+
   try {
-    const result = await pool.query("DELETE FROM products WHERE id = $1", [
-      req.params.id,
-    ]);
-
-    if (result.rowCount === 0)
-      return res.status(404).json({ message: "Product not found" });
-
-    res.status(204).send();
+    await pool.query(
+      "DELETE FROM favorites WHERE user_id = $1 AND product_id = $2",
+      [userId, productId]
+    );
+    res.json({ message: "Product removed from favorites" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
