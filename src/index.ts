@@ -338,6 +338,20 @@ app.post("/login", async (req: Request, res: Response) => {
   }
 });
 
+// DELETE account
+app.delete("/delete-account", authenticateToken, async (req: any, res: any) => {
+  const userId = req.user.id;
+
+  try {
+    await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+    res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting account:", err);
+    res.status(500).json({ message: "Server error while deleting account" });
+  }
+});
+
+
 /* ----------------------- START SERVER ----------------------- */
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
