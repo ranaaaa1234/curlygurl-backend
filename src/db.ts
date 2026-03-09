@@ -1,14 +1,8 @@
-import pkg from "pg";
-const { Pool } = pkg;
-
+import { Pool } from "pg";
 import dotenv from "dotenv";
-dotenv.config(); 
+dotenv.config();
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
-pool.on("connect", () => {
-  console.log("Connected to the database");
+  ssl: { rejectUnauthorized: false }, // Neon kräver SSL
 });

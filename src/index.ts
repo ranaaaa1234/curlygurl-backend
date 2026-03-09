@@ -99,7 +99,7 @@ app.put("/products/:id", upload.single("image"), async (req, res) => {
     const result = await pool.query(
       `UPDATE products SET 
       name=$1, price=$2, description=$3, size=$4, image=$5
-      WHERE id=$8 RETURNING *`,
+      WHERE id=$6 RETURNING *`,
       [name, price, description, size, image, req.params.id]
     );
 
