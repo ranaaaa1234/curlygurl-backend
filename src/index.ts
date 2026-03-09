@@ -1,3 +1,4 @@
+import "iconv-lite/lib/helpers/merge-exports";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import multer from "multer";
