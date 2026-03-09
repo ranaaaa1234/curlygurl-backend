@@ -29,6 +29,7 @@
   },
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
+    "postinstall": "prisma generate",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "test": "ts-node test-db.ts"
