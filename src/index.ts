@@ -23,7 +23,7 @@ interface Product {
   quantity?: number;
 }
 
-app.use(cors());
+app.use(cors({ origin: "https://curlygurl.vercel.app" }));
 app.use(express.json());
 
 // Access files with /uploads via http://localhost:4000/uploads/filename.jpg
@@ -353,10 +353,12 @@ app.delete("/delete-account", authenticateToken, async (req: any, res: any) => {
 });
 
 
-/* ----------------------- START SERVER ----------------------- */
+/* ----------------------- START SERVER ----------------------- 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
+
+*/
 
 app.get("/", (req, res) => {
   res.send("Backend is alive :)");
